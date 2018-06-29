@@ -940,14 +940,12 @@ class CryptoHeroContract extends OwnerableContract {
         }
     }
 
-    triggerDrawEvent(status, _from, tokens) {
-        const herosId = tokens.map((token) => this.getHeroIdByTokenId(token.tokenId))
+    triggerDrawEvent(status, _from, cards) {
         Event.Trigger(this.name(), {
             Status: status,
             Draw: {
                 from: _from,
-                tokens,
-                herosId
+                cards
             }
         })
     }
@@ -972,15 +970,10 @@ class CryptoHeroContract extends OwnerableContract {
         }
     }
 
-    airdrop(to = "", referer = "") {
-        const cards = this.draw(referer)
-        if (to !== "") {
-            for (const card of cards) {
-                // this.tokenOwner.set(token, to)
-                this._transferHeroToken(card.tokenId, to)
-                this._transferHeroTokenOfCards(card, to)
-            }
-        }
+    // Strict AirDrop that need to parameter
+    airdrop(to, referer = "") {
+        const cards = this.draw(referer, to)
+        return cards
     }
 
     _sendCommissionTo(referer, actualCost) {
