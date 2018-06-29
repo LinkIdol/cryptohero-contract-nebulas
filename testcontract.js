@@ -269,28 +269,6 @@ class TradableNRC721Token extends StandardNRC721Token {
         this.tokenPrice.set(_tokenId, Tool.fromNasToWei(_value))
     }   
 
-    setTokenPriceOfCards(_tokenId, _value) {
-        this.onlyTokenOwner(_tokenId)
-        const { from } = Blockchain.transaction
-        var cards = this.getCardInfos(from)
-        var info = []
-        for(let card of cards){
-            if(card.tokenId == _tokenId){
-              info.push({
-                tokenId: card.tokenId,
-                heroId: card.heroId,
-                price: Tool.fromNasToWei(_value)
-              })
-            }else{
-                info.push({
-                tokenId: card.tokenId,
-                heroId: card.heroId,
-                price: card.price
-              }) 
-            }
-        }
-        this.cardInfos.set(from, info)
-    }   
     buyToken(_tokenId) {
         const { value, from } = Blockchain.transaction
         const price = new BigNumber(this.priceOf(_tokenId))
@@ -350,7 +328,7 @@ class CryptoHeroToken extends TradableNRC721Token {
             this.totalQty = new BigNumber(this.totalQty).minus(1);
             this.tokenHeroId.set(tokenId, _heroId)
             this.tokenPrice.set(tokenId, initialTokenPrice)
-            this._mcards(_to,tokenId,_heroId,initialTokenPrice)
+            this._mcards(_to,_heroId,tokenId,initialTokenPrice)
             this._length += 1;
             return tokenId
         }
