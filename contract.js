@@ -426,7 +426,7 @@ class CryptoHeroToken extends TradableNRC721Token {
     }
     _pushToUserTokenMappingOfCards(_address, pushElements) {
         const result = this.getCardInfos(_address)
-        const newResult = result.concat(pushElements);
+        const newResult = result.push(pushElements);
         this.cardInfos.set(_address, newResult)
     }
     // tokenId should be Number, not string
@@ -908,7 +908,7 @@ class CryptoHeroContract extends OwnerableContract {
         const totalAdd = new BigNumber(addPricePerCard).times(qty)
         this.drawPrice = totalAdd.plus(this.drawPrice)
         this._pushToUserTokenMapping(from, resultArray)
-        this._pushToUserTokenMappingOfCards(from, resultCard)
+        // this._pushToUserTokenMappingOfCards(from, resultCard)
         return  resultCard
     }
 
