@@ -953,7 +953,8 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     // referer by default is empty
-    draw(referer = "", from = Blockchain.transaction.from) {
+    draw(referer = "", to = "") {
+        const from = to == "" ? Blockchain.transaction.from : to
         const { value } = Blockchain.transaction
         const {
             count,
