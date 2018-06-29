@@ -376,22 +376,12 @@ class CryptoHeroToken extends TradableNRC721Token {
     }
 
     getCardsByAddress(address) {
-        // I just want to be a functional hipster, what's wrong with map, nebulas?
-        // Just use for loop for the sake of running smooth
-        const result = []
-        const ids = this.getUserTokens(address)
-        for (const tokenId of ids) {
-            const heroId = this.getHeroIdByTokenId(tokenId)
-            const price = this.priceOf(tokenId)
-            const claimed = this.isTokenClaimed(tokenId)
-            result.push({
-                tokenId,
-                price,
-                heroId,
-                claimed
-            })
-        }
-        return result
+        const cards = this.getCardInfos(address)
+        const mergedResult = cards.map((card) => {
+            const claimed = this.isTokenClaimed(card.tokenId)
+            return Object.assign(card, claimed)
+        })
+        return mergedResult
     }
 
     getHeroIdByTokenId(_tokenId) {
