@@ -588,7 +588,7 @@ class CryptoHeroContract extends OwnerableContract {
     }
     _transferHeroTokenOfCards(card, to) {
         const tokenOwner = this.tokenOwner.get(card.tokenId)
-        this.tokenOwner.set(_tokenId, to)
+        this.tokenOwner.set(card.tokenId, to)
         this._removeTokenFromUserOfCards(tokenOwner, card.tokenId)
         this._pushToUserTokenMappingOfCards(to, card)
     }
