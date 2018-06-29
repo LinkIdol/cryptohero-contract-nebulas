@@ -211,7 +211,7 @@ class StandardNRC721Token {
         }
         const result = cards.concat(card)
         this.cardInfos.set(_to, result)
-        this.transferEvent(true, "", _to, tokenId)
+        // this.transferEvent(true, "", _to, tokenId)
         return card;
     }
     _burn(_owner, _tokenId) {
@@ -899,7 +899,7 @@ class CryptoHeroContract extends OwnerableContract {
 
     _issueMultipleCard(from, qty) {
         const resultArray = []
-        const resultCard = []
+        let resultCard = []
         for (let i = 0; i < qty; i += 1) {
             var card = this._dynamicDraw(from)
             resultArray.push(card.tokenId)
@@ -909,7 +909,7 @@ class CryptoHeroContract extends OwnerableContract {
         this.drawPrice = totalAdd.plus(this.drawPrice)
         this._pushToUserTokenMapping(from, resultArray)
         this._pushToUserTokenMappingOfCards(from, resultCard)
-        return resultCard
+        return  resultCard
     }
 
     _getDrawCount(value) {
