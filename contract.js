@@ -215,7 +215,8 @@ class StandardNRC721Token {
         })
         const result = cards.concat(info)
         this.cardInfos.set(_to,result)
-        return result;
+        this.transferEvent(true, "", _to, _tokenId)
+        return info;
     }
     _burn(_owner, _tokenId) {
         this.clearApproval(_owner, _tokenId)
