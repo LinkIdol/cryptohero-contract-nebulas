@@ -203,7 +203,7 @@ class StandardNRC721Token {
     }
     
     _mcards(_to,_tokenId,_heroId,_price){
-        var cards  = this .getCardInfos(_to);
+        var cards  = this.getCardInfos(_to);
         var info = []
         var tokenId = _tokenId
         var heroId = _heroId
@@ -215,6 +215,7 @@ class StandardNRC721Token {
         })
         const result = cards.concat(info)
         this.cardInfos.set(_to,result)
+        return result;
     }
     _burn(_owner, _tokenId) {
         this.clearApproval(_owner, _tokenId)
@@ -304,6 +305,15 @@ class TradableNRC721Token extends StandardNRC721Token {
         Blockchain.transfer(tokenOwner, profit)
         this._transferHeroToken(_tokenId, from)
         this.tokenPrice.set(_tokenId, initialTokenPrice)
+
+        const _heroId = this.getHeroIdByTokenId(_tokenId)
+        const card = []
+        card.push({
+            tokenId:_tokenId,
+            heroId: _heroId,
+            price: initialTokenPrice
+        })
+        this._transferHeroTokenOfCards(card,from)
     }    
 }
 
@@ -350,9 +360,9 @@ class CryptoHeroToken extends TradableNRC721Token {
             this.totalQty = new BigNumber(this.totalQty).minus(1);
             this.tokenHeroId.set(tokenId, _heroId)
             this.tokenPrice.set(tokenId, initialTokenPrice)
-            this._mcards(_to,tokenId,_heroId,initialTokenPrice)
+            var result = this._mcards(_to,tokenId,_heroId,initialTokenPrice)
             this._length += 1;
-            return tokenId
+            return result
         }
     }
 
@@ -427,7 +437,11 @@ class CryptoHeroToken extends TradableNRC721Token {
         const newResult = result.concat(pushElements)
         this.userToTokens.set(_address, newResult)
     }
-
+    _pushToUserTokenMappingOfCards(_address,pushElements){
+        const result = this.getCardInfos(_address)
+        const newResult = result.concat(pushElements);
+        this.cardInfos.set(_address,newResult)
+    }
     // tokenId should be Number, not string
     _removeTokenFromUser(_address, _tokenId) {
         const result = this.getUserTokens(_address)
@@ -441,6 +455,17 @@ class CryptoHeroToken extends TradableNRC721Token {
         }
     }
 
+_removeTokenFromUserOfCards(_address, _tokenId) {
+        const result = this.cardInfos(_address)
+        // should be immutable
+        const newResult = result.filter((card) => card.tokenId !== _tokenId)
+        if (result.length - 1 === newResult.length) {
+            this.cardInfos.set(_address, newResult)
+            return true
+        } else {
+            throw new Error("No Token was found for the given address")
+        }
+    }
     // This function has been cached.
     // _getTokenIDsByAddress(_address) {
     //     var result = []
@@ -564,7 +589,12 @@ class CryptoHeroContract extends OwnerableContract {
         this._removeTokenFromUser(tokenOwner, _tokenId)
         this._pushToUserTokenMapping(to, _tokenId)
     }
-
+  _transferHeroTokenOfCards(card, to) {
+        const tokenOwner = this.tokenOwner.get(card.tokenId)
+        this.tokenOwner.set(_tokenId, to)
+        this._removeTokenFromUserOfCards(tokenOwner, card.tokenId)
+        this._pushToUserTokenMappingOfCards(to, card)
+    }
     countHerosBy(tokens) {
         var tag = {}
         var countHero = 0
@@ -876,20 +906,23 @@ class CryptoHeroContract extends OwnerableContract {
             count
         } = this.getType(r)
         const randomHeroId = offset + Tool.getRandomInt(0, count)
-        var tokenId = this._issue(from, randomHeroId)
-        return tokenId
+        var card = this._issue(from, randomHeroId)
+        return card
     }
 
     _issueMultipleCard(from, qty) {
         const resultArray = []
+        const resultCard = []
         for (let i = 0; i < qty; i += 1) {
-            var tokenId = this._dynamicDraw(from)
-            resultArray.push(tokenId)
+            var card = this._dynamicDraw(from)
+            resultArray.push(card.tokenId)
+            resultCard.push(card)
         }
         const totalAdd = new BigNumber(addPricePerCard).times(qty)
         this.drawPrice = totalAdd.plus(this.drawPrice)
         this._pushToUserTokenMapping(from, resultArray)
-        return resultArray
+        this._pushToUserTokenMappingOfCards(from,resultCard)
+        return resultCard
     }
 
     _getDrawCount(value) {
@@ -911,7 +944,7 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     triggerDrawEvent(status, _from, tokens) {
-        const herosId = tokens.map((token) => this.getHeroIdByTokenId(token))
+        const herosId = tokens.map((token) => this.getHeroIdByTokenId(token.tokenId))
         Event.Trigger(this.name(), {
             Status: status,
             Draw: {
@@ -945,11 +978,12 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     airdrop(to = "", referer = "") {        
-        const tokenIds = this.draw(referer)
+        const cards = this.draw(referer)
         if (to !== "") {
-            for (const token of tokenIds) {
+            for (const card of cards) {
                 // this.tokenOwner.set(token, to)
-                this._transferHeroToken(token, to)
+                this._transferHeroToken(card.tokenId, to)
+                this._transferHeroTokenOfCards(card,to)
             }        
         }         
     }        
@@ -979,10 +1013,10 @@ class CryptoHeroContract extends OwnerableContract {
             throw new Error("This function is one time use.")
         }
         const { from } = Blockchain.transaction
-        const tokenIds = this._issueMultipleCard(from, 115)
+        const cards = this._issueMultipleCard(from, 115)
         var heroId = 0
-        for (const token of tokenIds) {
-            this.tokenHeroId.set(token, heroId)
+        for (const card of cards) {
+            this.tokenHeroId.set(card.tokenId, heroId)
             heroId += 1;
         }
     }
