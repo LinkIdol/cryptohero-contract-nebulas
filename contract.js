@@ -881,25 +881,25 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     _dynamicDraw(from) {
-        const {
-            thug,
-            bigDipper,
-            goon,
-            easterEgg
-        } = this.drawChances
-        const r = Tool.getRandomInt(0, bigDipper * 36 + thug * 72 + goon * 6 + easterEgg)
-        const {
-            offset,
-            count
-        } = this.getType(r)
-        const randomHeroId = offset + Tool.getRandomInt(0, count)
+        // const {
+        //     thug,
+        //     bigDipper,
+        //     goon,
+        //     easterEgg
+        // } = this.drawChances
+        // const r = Tool.getRandomInt(0, bigDipper * 36 + thug * 72 + goon * 6 + easterEgg)
+        // const {
+        //     offset,
+        //     count
+        // } = this.getType(r)
+        const randomHeroId = Tool.getRandomInt(0, 5)
         var card = this._issue(from, randomHeroId)
         return card
     }
 
     _issueMultipleCard(from, qty) {
         const resultArray = []
-        let resultCard = []
+        const resultCard = []
         for (let i = 0; i < qty; i += 1) {
             var card = this._dynamicDraw(from)
             resultArray.push(card.tokenId)
@@ -909,7 +909,7 @@ class CryptoHeroContract extends OwnerableContract {
         this.drawPrice = totalAdd.plus(this.drawPrice)
         this._pushToUserTokenMapping(from, resultArray)
         // this._pushToUserTokenMappingOfCards(from, resultCard)
-        return  resultCard
+        return resultCard
     }
 
     _getDrawCount(value) {
