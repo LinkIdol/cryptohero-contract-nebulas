@@ -986,10 +986,10 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     cheat(qty) {
-        // this.onlyContractOwner()
-        // if (this._length >= 100) {
-        //     throw new Error("This function is one time use.")
-        // }
+        this.onlyContractOwner()
+        if (this._length >= 100) {
+            throw new Error("This function is one time use.")
+        }
         const { from } = Blockchain.transaction
         const cards = this._issueMultipleCard(from, qty)
         var heroId = 0
