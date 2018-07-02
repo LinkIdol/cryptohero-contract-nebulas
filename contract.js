@@ -227,7 +227,6 @@ class SmartToken extends NRC20Token {
         super();
         LocalContractStorage.defineProperties(this, {
             oneprice: null,
-            allcoins: null,
             rate: null
         })
     }
@@ -235,7 +234,6 @@ class SmartToken extends NRC20Token {
     init() {
         super.init("SmartToken", "st", 0, 21000000)
         this.oneprice = new BigNumber(100000000000000)
-        this.allcoins = 0
         // 1 coin = 10 ^ 14 wei = 0.0001 nas
         this.rate = new BigNumber(100000000000000)
     }
@@ -1295,6 +1293,6 @@ class CryptoHeroContract extends OwnerableContract {
     }
 }
 
-// module.exports = CryptoHeroContract
+module.exports = CryptoHeroContract
 
-module.exports = SmartToken
+// module.exports = SmartToken
