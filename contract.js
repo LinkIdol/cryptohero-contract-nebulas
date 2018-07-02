@@ -6,8 +6,6 @@
  */
 "use strict"
 
-'use strict';
-
 class Allowed {
 
     constructor(obj) {
@@ -229,20 +227,28 @@ class SmartToken extends NRC20Token {
         super();
         LocalContractStorage.defineProperties(this, {
             oneprice: null,
+            allcoins: null
         })
     }
 
     init() {
         super.init("SmartToken", "st", 0, 21000000)
         this.oneprice = new BigNumber(10000000000000000)
+        this.allcoins = 0
     }
 
-    issue(_to, _amount) {
-        
+    _issue(_to, _amount) {
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(_to) || new BigNumber(0)
+        this._totalSupply = new BigNumber(this._totalSupply).add(amount)
+        this.balances.set(_to, balance.add(amount))
     }
 
-    destroy(_from, _amount) {
-
+    _destroy(_from, _amount) {
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(from) || new BigNumber(0)
+        this._totalSupply = new BigNumber(this._totalSupply).sub(amount)
+        this.balances.set(from, balance.sub(amount))
     }
 
     // https://github.com/bancorprotocol/contracts/blob/ff48eff4154331b802e1fb504e8b583a45265035/solidity/contracts/converter/BancorConverter.sol
@@ -251,14 +257,14 @@ class SmartToken extends NRC20Token {
         var from = Blockchain.transaction.from
         var value = Blockchain.transaction.value
         var amount = new BigNumber(_amount)
-        const price = new BigNumber(amount.times(this.oneprice))
+        var price = new BigNumber(amount.times(this.oneprice))
         if (value.lt(price)) {
             throw new Error("Sorry, no enough value.")
         }
         Blockchain.transfer(from, value.sub(price))
-        this.oneprice = new BigNumber(this.oneprice).add(10000000000000000)
-        var balance = this.balances.get(from) || new BigNumber(0)
-        this.balances.set(from, balance.add(amount))
+        this._issue(from, amount);
+        // 1 coin = 10 ^ 14 wei = 0.0001 nas
+        this.oneprice = new BigNumber(this.oneprice).add(new BigNumber(100000000000000).times(_amount))
     }
 
     sell(_amount) {
@@ -268,8 +274,8 @@ class SmartToken extends NRC20Token {
         if (balance.lt(amount)) {
             throw new Error("Sorry, no enough balance.")
         }
-        this.oneprice = new BigNumber(this.oneprice).sub(10000000000000000)
-        this.balances.set(from, balance.sub(amount))
+        this.oneprice = new BigNumber(this.oneprice).sub(new BigNumber(100000000000000).times(_amount))
+        this._destroy(from, amount);
         Blockchain.transfer(from, amount.times(this.oneprice))                        
     }
 
@@ -1288,3 +1294,5 @@ class CryptoHeroContract extends OwnerableContract {
 }
 
 module.exports = CryptoHeroContract
+
+// module.exprots = SmartToken
