@@ -6,6 +6,276 @@
  */
 "use strict"
 
+'use strict';
+
+class Allowed {
+
+    constructor(obj) {
+        this.allowed = {};
+        this.parse(obj);
+    }
+
+    toString () {
+        return JSON.stringify(this.allowed);
+    }
+
+    parse (obj) {
+        if (typeof obj != "undefined") {
+            var data = JSON.parse(obj);
+            for (var key in data) {
+                this.allowed[key] = new BigNumber(data[key]);
+            }
+        }
+    }
+
+    get (key) {
+        return this.allowed[key];
+    }
+
+    set (key, value) {
+        this.allowed[key] = new BigNumber(value);
+    }
+}
+
+class NRC20Token {
+
+    constructor() {
+        LocalContractStorage.defineProperties(this, {
+            _name: null,
+            _symbol: null,
+            _decimals: null,
+            _totalSupply: {
+                parse: function (value) {
+                    return new BigNumber(value);
+                },
+                stringify: function (o) {
+                    return o.toString(10);
+                }
+            }
+        });
+    
+        LocalContractStorage.defineMapProperties(this, {
+            "balances": {
+                parse: function (value) {
+                    return new BigNumber(value);
+                },
+                stringify: function (o) {
+                    return o.toString(10);
+                }
+            },
+            "allowed": {
+                parse: function (value) {
+                    return new Allowed(value);
+                },
+                stringify: function (o) {
+                    return o.toString();
+                }
+            }
+        });
+    }
+
+    init (name, symbol, decimals, totalSupply) {
+        this._name = name;
+        this._symbol = symbol;
+        this._decimals = decimals || 0;
+        this._totalSupply = new BigNumber(totalSupply).mul(new BigNumber(10).pow(decimals));
+
+        var from = Blockchain.transaction.from;
+        this.balances.set(from, this._totalSupply);
+        this.transferEvent(true, from, from, this._totalSupply);
+    }
+
+    // Returns the name of the token
+    name () {
+        return this._name;
+    }
+
+    // Returns the symbol of the token
+    symbol () {
+        return this._symbol;
+    }
+
+    // Returns the number of decimals the token uses
+    decimals () {
+        return this._decimals;
+    }
+
+    totalSupply () {
+        return this._totalSupply.toString(10);
+    }
+
+    balanceOf (owner) {
+        var balance = this.balances.get(owner);
+
+        if (balance instanceof BigNumber) {
+            return balance.toString(10);
+        } else {
+            return "0";
+        }
+    }
+
+    transfer (to, value) {
+        value = new BigNumber(value);
+        if (value.lt(0)) {
+            throw new Error("invalid value.");
+        }
+
+        var from = Blockchain.transaction.from;
+        var balance = this.balances.get(from) || new BigNumber(0);
+
+        if (balance.lt(value)) {
+            throw new Error("transfer failed.");
+        }
+
+        this.balances.set(from, balance.sub(value));
+        var toBalance = this.balances.get(to) || new BigNumber(0);
+        this.balances.set(to, toBalance.add(value));
+
+        this.transferEvent(true, from, to, value);
+    }
+
+    transferFrom (from, to, value) {
+        var spender = Blockchain.transaction.from;
+        var balance = this.balances.get(from) || new BigNumber(0);
+
+        var allowed = this.allowed.get(from) || new Allowed();
+        var allowedValue = allowed.get(spender) || new BigNumber(0);
+        value = new BigNumber(value);
+
+        if (value.gte(0) && balance.gte(value) && allowedValue.gte(value)) {
+
+            this.balances.set(from, balance.sub(value));
+
+            // update allowed value
+            allowed.set(spender, allowedValue.sub(value));
+            this.allowed.set(from, allowed);
+
+            var toBalance = this.balances.get(to) || new BigNumber(0);
+            this.balances.set(to, toBalance.add(value));
+
+            this.transferEvent(true, from, to, value);
+        } else {
+            throw new Error("transfer failed.");
+        }
+    }
+
+    transferEvent (status, from, to, value) {
+        Event.Trigger(this.name(), {
+            Status: status,
+            Transfer: {
+                from: from,
+                to: to,
+                value: value
+            }
+        });
+    }
+
+    approve (spender, currentValue, value) {
+        var from = Blockchain.transaction.from;
+
+        var oldValue = this.allowance(from, spender);
+        if (oldValue != currentValue.toString()) {
+            throw new Error("current approve value mistake.");
+        }
+
+        var balance = new BigNumber(this.balanceOf(from));
+        var value = new BigNumber(value);
+
+        if (value.lt(0) || balance.lt(value)) {
+            throw new Error("invalid value.");
+        }
+
+        var owned = this.allowed.get(from) || new Allowed();
+        owned.set(spender, value);
+
+        this.allowed.set(from, owned);
+
+        this.approveEvent(true, from, spender, value);
+    }
+
+    approveEvent (status, from, spender, value) {
+        Event.Trigger(this.name(), {
+            Status: status,
+            Approve: {
+                owner: from,
+                spender: spender,
+                value: value
+            }
+        });
+    }
+
+    allowance (owner, spender) {
+        var owned = this.allowed.get(owner);
+
+        if (owned instanceof Allowed) {
+            var spender = owned.get(spender);
+            if (typeof spender != "undefined") {
+                return spender.toString(10);
+            }
+        }
+        return "0";
+    }
+}
+
+/*
+    Nas Smart Token v0.01
+
+    // https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/token/SmartToken.sol
+*/
+
+class SmartToken extends NRC20Token {
+
+    constructor () {
+        super();
+        LocalContractStorage.defineProperties(this, {
+            oneprice: null,
+        })
+    }
+
+    init() {
+        super.init("SmartToken", "st", 0, 21000000)
+        this.oneprice = new BigNumber(10000000000000000)
+    }
+
+    issue(_to, _amount) {
+        
+    }
+
+    destroy(_from, _amount) {
+
+    }
+
+    // https://github.com/bancorprotocol/contracts/blob/ff48eff4154331b802e1fb504e8b583a45265035/solidity/contracts/converter/BancorConverter.sol
+
+    buy (_amount) {
+        var from = Blockchain.transaction.from
+        var value = Blockchain.transaction.value
+        var amount = new BigNumber(_amount)
+        const price = new BigNumber(amount.times(this.oneprice))
+        if (value.lt(price)) {
+            throw new Error("Sorry, no enough value.")
+        }
+        Blockchain.transfer(from, value.sub(price))
+        this.oneprice = new BigNumber(this.oneprice).add(10000000000000000)
+        var balance = this.balances.get(from) || new BigNumber(0)
+        this.balances.set(from, balance.add(amount))
+    }
+
+    sell(_amount) {
+        var from = Blockchain.transaction.from
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(from) || new BigNumber(0)
+        if (balance.lt(amount)) {
+            throw new Error("Sorry, no enough balance.")
+        }
+        this.balances.set(from, balance.sub(amount))
+        Blockchain.transfer(from, amount.times(this.oneprice))                        
+    }
+
+    getoneprice () {
+        return this.oneprice
+    }
+}
 
 class Operator {
     constructor(obj) {
