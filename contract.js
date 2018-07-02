@@ -227,14 +227,17 @@ class SmartToken extends NRC20Token {
         super();
         LocalContractStorage.defineProperties(this, {
             oneprice: null,
-            allcoins: null
+            allcoins: null,
+            rate: null
         })
     }
 
     init() {
         super.init("SmartToken", "st", 0, 21000000)
-        this.oneprice = new BigNumber(10000000000000000)
+        this.oneprice = new BigNumber(100000000000000)
         this.allcoins = 0
+        // 1 coin = 10 ^ 14 wei = 0.0001 nas
+        this.rate = new BigNumber(100000000000000)
     }
 
     _issue(_to, _amount) {
@@ -246,9 +249,9 @@ class SmartToken extends NRC20Token {
 
     _destroy(_from, _amount) {
         var amount = new BigNumber(_amount)
-        var balance = this.balances.get(from) || new BigNumber(0)
+        var balance = this.balances.get(_from) || new BigNumber(0)
         this._totalSupply = new BigNumber(this._totalSupply).sub(amount)
-        this.balances.set(from, balance.sub(amount))
+        this.balances.set(_from, balance.sub(amount))
     }
 
     // https://github.com/bancorprotocol/contracts/blob/ff48eff4154331b802e1fb504e8b583a45265035/solidity/contracts/converter/BancorConverter.sol
@@ -263,8 +266,7 @@ class SmartToken extends NRC20Token {
         }
         Blockchain.transfer(from, value.sub(price))
         this._issue(from, amount);
-        // 1 coin = 10 ^ 14 wei = 0.0001 nas
-        this.oneprice = new BigNumber(this.oneprice).add(new BigNumber(100000000000000).times(_amount))
+        this.oneprice = new BigNumber(this.oneprice).add(new BigNumber(this.rate).times(_amount))
     }
 
     sell(_amount) {
@@ -274,7 +276,7 @@ class SmartToken extends NRC20Token {
         if (balance.lt(amount)) {
             throw new Error("Sorry, no enough balance.")
         }
-        this.oneprice = new BigNumber(this.oneprice).sub(new BigNumber(100000000000000).times(_amount))
+        this.oneprice = new BigNumber(this.oneprice).sub(new BigNumber(this.rate).times(_amount))
         this._destroy(from, amount);
         Blockchain.transfer(from, amount.times(this.oneprice))                        
     }
@@ -1293,6 +1295,6 @@ class CryptoHeroContract extends OwnerableContract {
     }
 }
 
-module.exports = CryptoHeroContract
+// module.exports = CryptoHeroContract
 
-// module.exprots = SmartToken
+module.exports = SmartToken
