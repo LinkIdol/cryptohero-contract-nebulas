@@ -268,6 +268,7 @@ class SmartToken extends NRC20Token {
         if (balance.lt(amount)) {
             throw new Error("Sorry, no enough balance.")
         }
+        this.oneprice = new BigNumber(this.oneprice).sub(10000000000000000)
         this.balances.set(from, balance.sub(amount))
         Blockchain.transfer(from, amount.times(this.oneprice))                        
     }
