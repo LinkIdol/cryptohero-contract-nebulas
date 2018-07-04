@@ -265,16 +265,18 @@ class SmartToken extends NRC20Token {
         //  -+----------->
         //   |  x1  x2   x
         //    
-        //  // need to add 1 high, for true price
+        //  need to sub 1 end, and add 1 high, for true price
+        //  example : input (1, 4) (buy 3 coins)
         //
-        //    1            0           1
-        //   □           |\           - 
-        // 3 □□    =   3 | \    ≠  2 | \
-        //   □□□         |  \        |  \
+        //                1           
+        //    1           -            1
+        //   □           | \           - 
+        // 3 □□    =   3 |  \    ≠  2 | \
+        //   □□□         |   \        |  \
         //    3            3           3
         //
         var startamount = new BigNumber(_startamount)
-        var endamount = new BigNumber(_endamount)
+        var endamount = new BigNumber(_endamount).sub(1)
         var rate = new BigNumber(this.rate)
         var price = (endamount.add(startamount)).times((endamount.sub(startamount).add(1)).times(rate)).div(2)
         return price
@@ -306,7 +308,7 @@ class SmartToken extends NRC20Token {
         var startamount = (new BigNumber(this.oneprice).div(this.rate))
         var endamount = newoneprice.div(this.rate)
         // get abs
-        var price = new BigNumber(this._getprice(endamout, startamout))
+        var price = new BigNumber(this._getprice(endamount, startamount))
         if (balance.lt(amount)) {
             throw new Error("Sorry, no enough balance.")
         }
