@@ -59,6 +59,7 @@ export declare const LocalContractStorage:ContractStorage;
 export interface StorageMap {
     // delete key from Native Storage, return 0 for success, otherwise failure.
     del(key: string): number;
+    delete(key: string): number;
 
     // get value by key from Native Storage,
     // deserialize value by calling `descriptor.parse` and return.
@@ -94,6 +95,12 @@ interface IBlockchain{
         gasPrice: BigNumber; //gas出价, 一个BigNumber对象
         gasLimit: BigNumber; //gas上限值, 一个BigNumber对象
     }
+
+    // 新函数，看着官方文档YY出来的
+    getAccountState(address :string): {
+        balance: BigNumber,
+        nonce: number,
+    } ;
 
     // transfer NAS from contract to address
     transfer(address:string, value:BigNumber):boolean;

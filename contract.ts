@@ -1010,9 +1010,10 @@ class CryptoHeroContract extends OwnerableContract {
         return this.myAddress
     }
 
-    getBalance() {
-        var balance = new BigNumber(Blockchain.getAccountState(this.myAddress).balance);
-        return balance
+    getBalance() :BigNumber {
+        // var balance = new BigNumber(Blockchain.getAccountState(this.myAddress).balance);
+        // 理论上返回的是 BigNumber 所以应该没必要
+        return Blockchain.getAccountState(this.myAddress).balance;
     }
 
     _addHolderShare(holder, share) {
