@@ -4,8 +4,13 @@
  * @author: Frank Wei <frank@frankwei.xyz>
  * @version: 1.0
  */
+
+
+//  Those imports are only for type annotations
+//  Please remove these import lines before deploy
 import { BigNumber } from "./bignumber";
 import { LocalContractStorage, Blockchain, StorageMap, Descriptor, Event, ContractStorage } from "./System";
+
 class Allowed {
     allowed :object;
     constructor(obj?) {
