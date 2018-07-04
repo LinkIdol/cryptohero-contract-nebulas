@@ -4,8 +4,324 @@
  * @author: Frank Wei <frank@frankwei.xyz>
  * @version: 1.0
  */
-"use strict"
+import { BigNumber } from "./bignumber";
+import { LocalContractStorage, Blockchain, StorageMap, Event } from "./System";
+class Allowed {
+    allowed :object;
+    constructor(obj) {
+        this.allowed = {};
+        this.parse(obj);
+    }
 
+    toString () {
+        return JSON.stringify(this.allowed);
+    }
+
+    parse (obj) {
+        if (typeof obj != "undefined") {
+            var data = JSON.parse(obj);
+            for (var key in data) {
+                this.allowed[key] = new BigNumber(data[key]);
+            }
+        }
+    }
+
+    get (key) {
+        return this.allowed[key];
+    }
+
+    set (key, value) {
+        this.allowed[key] = new BigNumber(value);
+    }
+}
+
+class NRC20Token {
+
+    constructor() {
+        LocalContractStorage.defineProperties(this, {
+            _name: null,
+            _symbol: null,
+            _decimals: null,
+            _totalSupply: {
+                parse: function (value) {
+                    return new BigNumber(value);
+                },
+                stringify: function (o) {
+                    return o.toString(10);
+                }
+            }
+        });
+    
+        LocalContractStorage.defineMapProperties(this, {
+            "balances": {
+                parse: function (value) {
+                    return new BigNumber(value);
+                },
+                stringify: function (o) {
+                    return o.toString(10);
+                }
+            },
+            "allowed": {
+                parse: function (value) {
+                    return new Allowed(value);
+                },
+                stringify: function (o) {
+                    return o.toString();
+                }
+            }
+        });
+    }
+
+    init (name, symbol, decimals, totalSupply) {
+        this._name = name;
+        this._symbol = symbol;
+        this._decimals = decimals || 0;
+        this._totalSupply = new BigNumber(totalSupply).mul(new BigNumber(10).pow(decimals));
+
+        var from = Blockchain.transaction.from;
+        this.balances.set(from, this._totalSupply);
+        this.transferEvent(true, from, from, this._totalSupply);
+    }
+
+    // Returns the name of the token
+    name () {
+        return this._name;
+    }
+
+    // Returns the symbol of the token
+    symbol () {
+        return this._symbol;
+    }
+
+    // Returns the number of decimals the token uses
+    decimals () {
+        return this._decimals;
+    }
+
+    totalSupply () {
+        return this._totalSupply.toString(10);
+    }
+
+    balanceOf (owner) {
+        var balance = this.balances.get(owner);
+
+        if (balance instanceof BigNumber) {
+            return balance.toString(10);
+        } else {
+            return "0";
+        }
+    }
+
+    transfer (to, value) {
+        value = new BigNumber(value);
+        if (value.lt(0)) {
+            throw new Error("invalid value.");
+        }
+
+        var from = Blockchain.transaction.from;
+        var balance = this.balances.get(from) || new BigNumber(0);
+
+        if (balance.lt(value)) {
+            throw new Error("transfer failed.");
+        }
+
+        this.balances.set(from, balance.sub(value));
+        var toBalance = this.balances.get(to) || new BigNumber(0);
+        this.balances.set(to, toBalance.add(value));
+
+        this.transferEvent(true, from, to, value);
+    }
+
+    transferFrom (from, to, value) {
+        var spender = Blockchain.transaction.from;
+        var balance = this.balances.get(from) || new BigNumber(0);
+
+        var allowed = this.allowed.get(from) || new Allowed();
+        var allowedValue = allowed.get(spender) || new BigNumber(0);
+        value = new BigNumber(value);
+
+        if (value.gte(0) && balance.gte(value) && allowedValue.gte(value)) {
+
+            this.balances.set(from, balance.sub(value));
+
+            // update allowed value
+            allowed.set(spender, allowedValue.sub(value));
+            this.allowed.set(from, allowed);
+
+            var toBalance = this.balances.get(to) || new BigNumber(0);
+            this.balances.set(to, toBalance.add(value));
+
+            this.transferEvent(true, from, to, value);
+        } else {
+            throw new Error("transfer failed.");
+        }
+    }
+
+    transferEvent (status, from, to, value) {
+        Event.Trigger(this.name(), {
+            Status: status,
+            Transfer: {
+                from: from,
+                to: to,
+                value: value
+            }
+        });
+    }
+
+    approve (spender, currentValue, value) {
+        var from = Blockchain.transaction.from;
+
+        var oldValue = this.allowance(from, spender);
+        if (oldValue != currentValue.toString()) {
+            throw new Error("current approve value mistake.");
+        }
+
+        var balance = new BigNumber(this.balanceOf(from));
+        var value = new BigNumber(value);
+
+        if (value.lt(0) || balance.lt(value)) {
+            throw new Error("invalid value.");
+        }
+
+        var owned = this.allowed.get(from) || new Allowed();
+        owned.set(spender, value);
+
+        this.allowed.set(from, owned);
+
+        this.approveEvent(true, from, spender, value);
+    }
+
+    approveEvent (status, from, spender, value) {
+        Event.Trigger(this.name(), {
+            Status: status,
+            Approve: {
+                owner: from,
+                spender: spender,
+                value: value
+            }
+        });
+    }
+
+    allowance (owner, spender) {
+        var owned = this.allowed.get(owner);
+
+        if (owned instanceof Allowed) {
+            var spender = owned.get(spender);
+            if (typeof spender != "undefined") {
+                return spender.toString(10);
+            }
+        }
+        return "0";
+    }
+}
+
+/*
+    Nas Smart Token v0.01
+
+    // https://github.com/bancorprotocol/contracts/blob/master/solidity/contracts/token/SmartToken.sol
+*/
+
+class SmartToken extends NRC20Token {
+
+    constructor () {
+        super();
+        LocalContractStorage.defineProperties(this, {
+            oneprice: null,
+            rate: null
+        })
+    }
+
+    init() {
+        super.init("SmartToken", "st", 0, 21000000)
+        this.oneprice = new BigNumber(100000000000000)
+        // 1 coin = 10 ^ 14 wei = 0.0001 nas
+        this.rate = new BigNumber(100000000000000)
+    }
+
+    _issue(_to, _amount) {
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(_to) || new BigNumber(0)
+        this._totalSupply = new BigNumber(this._totalSupply).add(amount)
+        this.balances.set(_to, balance.add(amount))
+    }
+
+    _destroy(_from, _amount) {
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(_from) || new BigNumber(0)
+        this._totalSupply = new BigNumber(this._totalSupply).sub(amount)
+        this.balances.set(_from, balance.sub(amount))
+    }
+
+    _getprice(_startamount, _endamount) {
+        // y = ax; a = rate;
+        // x1 = startamout; x2 = endamount;
+        //
+        // y ^    
+        //   |    
+        //   |     /|
+        //   |    / | 
+        //   |   /  |
+        //   |  |   |
+        //  -+----------->
+        //   |  x1  x2   x
+        //    
+        //  need to sub 1 end, and add 1 high, for true price
+        //  example : input (1, 4) (buy 3 coins)
+        //
+        //                1           
+        //    1           -            1
+        //   □           | \           - 
+        // 3 □□    =   3 |  \    ≠  2 | \
+        //   □□□         |   \        |  \
+        //    3            3           3
+        //
+        var startamount = new BigNumber(_startamount)
+        var endamount = new BigNumber(_endamount).sub(1)
+        var rate = new BigNumber(this.rate)
+        var price = (endamount.add(startamount)).times((endamount.sub(startamount).add(1)).times(rate)).div(2)
+        return price
+    }
+
+    // https://github.com/bancorprotocol/contracts/blob/ff48eff4154331b802e1fb504e8b583a45265035/solidity/contracts/converter/BancorConverter.sol
+
+    buy(_amount) {
+        var from = Blockchain.transaction.from
+        var value = Blockchain.transaction.value
+        var amount = new BigNumber(_amount)
+        var newoneprice = new BigNumber(this.oneprice).add(new BigNumber(this.rate).times(_amount))
+        var startamount = new BigNumber(this.oneprice).div(this.rate)
+        var endamount = newoneprice.div(this.rate)
+        var price = new BigNumber(this._getprice(startamount, endamount))
+        if (value.lt(price)) {
+            throw new Error("Sorry, no enough value.")
+        }
+        Blockchain.transfer(from, value.sub(price))
+        this._issue(from, amount)
+        this.oneprice = newoneprice
+    }
+
+    sell(_amount) {
+        var from = Blockchain.transaction.from
+        var amount = new BigNumber(_amount)
+        var balance = this.balances.get(from) || new BigNumber(0)
+        var newoneprice = new BigNumber(this.oneprice).sub(new BigNumber(this.rate).times(_amount))
+        var startamount = (new BigNumber(this.oneprice).div(this.rate))
+        var endamount = newoneprice.div(this.rate)
+        // get abs
+        var price = new BigNumber(this._getprice(endamount, startamount))
+        if (balance.lt(amount)) {
+            throw new Error("Sorry, no enough balance.")
+        }
+        Blockchain.transfer(from, price) 
+        this._destroy(from, amount)
+        this.oneprice = newoneprice                    
+    }
+
+    getoneprice () {
+        return this.oneprice
+    }
+
+}
 
 class Operator {
     constructor(obj) {
@@ -201,20 +517,18 @@ class StandardNRC721Token {
         this._addTokenTo(_to, _tokenId)
         this.transferEvent(true, "", _to, _tokenId)
     }
-    
-    _mcards(_to,_tokenId,_heroId,_price){
-        var cards  = this .getCardInfos(_to);
-        var info = []
-        var tokenId = _tokenId
-        var heroId = _heroId
-        var price = _price
-        info.push({
-              tokenId,
-              heroId,
-              price
-        })
-        const result = cards.concat(info)
-        this.cardInfos.set(_to,result)
+
+    _mcards(_to, tokenId, heroId, price) {
+        var cards = this.getCardInfos(_to);
+        const card = {
+            tokenId,
+            heroId,
+            price
+        }
+        const result = cards.concat(card)
+        this.cardInfos.set(_to, result)
+        // this.transferEvent(true, "", _to, tokenId)
+        return card;
     }
     _burn(_owner, _tokenId) {
         this.clearApproval(_owner, _tokenId)
@@ -249,7 +563,7 @@ class TradableNRC721Token extends StandardNRC721Token {
     constructor() {
         super()
         LocalContractStorage.defineMapProperties(this, { "tokenPrice": null })
-    }    
+    }
 
     onlyTokenOwner(_tokenId) {
         const { from } = Blockchain.transaction
@@ -261,14 +575,36 @@ class TradableNRC721Token extends StandardNRC721Token {
 
     priceOf(_tokenId) {
         return this.tokenPrice.get(_tokenId)
-    }    
+    }
 
     // _value: unit should be nas
     setTokenPrice(_tokenId, _value) {
         this.onlyTokenOwner(_tokenId)
         this.tokenPrice.set(_tokenId, Tool.fromNasToWei(_value))
-    }   
+    }
 
+    setTokenPriceOfCards(_tokenId, _value) {
+        this.onlyTokenOwner(_tokenId)
+        const { from } = Blockchain.transaction
+        var cards = this.getCardInfos(from)
+        var info = []
+        for (const card of cards) {
+            if (card.tokenId == _tokenId) {
+                info.push({
+                    tokenId: card.tokenId,
+                    heroId: card.heroId,
+                    price: Tool.fromNasToWei(_value)
+                })
+            } else {
+                info.push({
+                    tokenId: card.tokenId,
+                    heroId: card.heroId,
+                    price: card.price
+                })
+            }
+        }
+        this.cardInfos.set(from, info)
+    }
     buyToken(_tokenId) {
         const { value, from } = Blockchain.transaction
         const price = new BigNumber(this.priceOf(_tokenId))
@@ -282,7 +618,16 @@ class TradableNRC721Token extends StandardNRC721Token {
         Blockchain.transfer(tokenOwner, profit)
         this._transferHeroToken(_tokenId, from)
         this.tokenPrice.set(_tokenId, initialTokenPrice)
-    }    
+
+        const _heroId = this.getHeroIdByTokenId(_tokenId)
+        const card = []
+        card.push({
+            tokenId: _tokenId,
+            heroId: _heroId,
+            price: initialTokenPrice
+        })
+        this._transferHeroTokenOfCards(card, from)
+    }
 }
 
 class CryptoHeroToken extends TradableNRC721Token {
@@ -309,7 +654,7 @@ class CryptoHeroToken extends TradableNRC721Token {
                 stringify(o) {
                     return JSON.stringify(o)
                 }
-            }        
+            }
         })
     }
 
@@ -328,9 +673,9 @@ class CryptoHeroToken extends TradableNRC721Token {
             this.totalQty = new BigNumber(this.totalQty).minus(1);
             this.tokenHeroId.set(tokenId, _heroId)
             this.tokenPrice.set(tokenId, initialTokenPrice)
-            this._mcards(_to,_heroId,tokenId,initialTokenPrice)
+            var result = this._mcards(_to, tokenId, _heroId, initialTokenPrice)
             this._length += 1;
-            return tokenId
+            return result
         }
     }
 
@@ -347,36 +692,26 @@ class CryptoHeroToken extends TradableNRC721Token {
     }
 
     getCardsByAddress(address) {
-        // I just want to be a functional hipster, what's wrong with map, nebulas?
-        // Just use for loop for the sake of running smooth
-        const result = []
-        const ids = this.getUserTokens(address)
-        for (const tokenId of ids) {
-            const heroId = this.getHeroIdByTokenId(tokenId)
-            const price = this.priceOf(tokenId)
-            const claimed = this.isTokenClaimed(tokenId)
-            result.push({
-                tokenId,
-                price,
-                heroId,
-                claimed
-            })
-        }
-        return result
+        const cards = this.getCardInfos(address)
+        const mergedResult = cards.map((card) => {
+            const claimed = this.isTokenClaimed(card.tokenId)
+            return Object.assign(card, claimed)
+        })
+        return mergedResult
     }
 
     getHeroIdByTokenId(_tokenId) {
         return this.tokenHeroId.get(_tokenId)
     }
 
-   getCardInfos(_address){
-     const result = this.cardInfos.get(_address)
+    getCardInfos(_address) {
+        const result = this.cardInfos.get(_address)
         if (result === null) {
             return []
         } else {
             return result
         }
-   }
+    }
     getUserTokens(_address) {
         const result = this.userToTokens.get(_address)
         if (result === null) {
@@ -405,7 +740,11 @@ class CryptoHeroToken extends TradableNRC721Token {
         const newResult = result.concat(pushElements)
         this.userToTokens.set(_address, newResult)
     }
-
+    _pushToUserTokenMappingOfCards(_address, pushElements) {
+        const result = this.getCardInfos(_address)
+        const newResult = result.push(pushElements);
+        this.cardInfos.set(_address, newResult)
+    }
     // tokenId should be Number, not string
     _removeTokenFromUser(_address, _tokenId) {
         const result = this.getUserTokens(_address)
@@ -419,6 +758,17 @@ class CryptoHeroToken extends TradableNRC721Token {
         }
     }
 
+    _removeTokenFromUserOfCards(_address, _tokenId) {
+        const result = this.cardInfos(_address)
+        // should be immutable
+        const newResult = result.filter((card) => card.tokenId !== _tokenId)
+        if (result.length - 1 === newResult.length) {
+            this.cardInfos.set(_address, newResult)
+            return true
+        } else {
+            throw new Error("No Token was found for the given address")
+        }
+    }
     // This function has been cached.
     // _getTokenIDsByAddress(_address) {
     //     var result = []
@@ -490,7 +840,7 @@ class CryptoHeroContract extends OwnerableContract {
             totalEarnByReferenceAllUser: null,
             holders: null
         })
-        LocalContractStorage.defineMapProperties(this, { 
+        LocalContractStorage.defineMapProperties(this, {
             "tokenClaimed": null,
             "shareOfHolder": null,
             "totalEarnByShare": {
@@ -516,7 +866,7 @@ class CryptoHeroContract extends OwnerableContract {
                 stringify(o) {
                     return JSON.stringify(o)
                 }
-            }    
+            }
         })
     }
 
@@ -542,7 +892,12 @@ class CryptoHeroContract extends OwnerableContract {
         this._removeTokenFromUser(tokenOwner, _tokenId)
         this._pushToUserTokenMapping(to, _tokenId)
     }
-
+    _transferHeroTokenOfCards(card, to) {
+        const tokenOwner = this.tokenOwner.get(card.tokenId)
+        this.tokenOwner.set(card.tokenId, to)
+        this._removeTokenFromUserOfCards(tokenOwner, card.tokenId)
+        this._pushToUserTokenMappingOfCards(to, card)
+    }
     countHerosBy(tokens) {
         var tag = {}
         var countHero = 0
@@ -563,7 +918,7 @@ class CryptoHeroContract extends OwnerableContract {
                     taggedGod.push(token)
                 } else {
                     countEvil += 1
-                    taggedEvils.push(token)                    
+                    taggedEvils.push(token)
                 }
                 tag[heroId] = true
             }
@@ -584,14 +939,14 @@ class CryptoHeroContract extends OwnerableContract {
         return this.countHerosBy(tokens)
     }
 
-    _claim(tag, tokens, l, r) {        
+    _claim(tag, tokens, l, r) {
         for (const tokenId of tokens) {
             const heroId = this.tokenHeroId.get(tokenId)
             if (tag[heroId] == true) {
                 if (heroId >= l && heroId <= r) {
                     this.tokenClaimed.set(tokenId, true)
-                }                
-            } 
+                }
+            }
         }
         this.drawPrice = new BigNumber(this.drawPrice).minus(addPricePerCard.times(r - l + 1))
     }
@@ -604,7 +959,7 @@ class CryptoHeroContract extends OwnerableContract {
                 share
             }
         })
-    }    
+    }
 
     getMyAddress() {
         return this.myAddress
@@ -617,14 +972,14 @@ class CryptoHeroContract extends OwnerableContract {
 
     _addHolderShare(holder, share) {
         Blockchain.transfer(holder, share)
-        this.triggerShareEvent(true, holder, share)        
+        this.triggerShareEvent(true, holder, share)
         if (this.totalEarnByShare.get(holder) == null) {
             this.totalEarnByShare.set(holder, new BigNumber(0))
-        }            
+        }
         this.totalEarnByShare.set(holder, new BigNumber(this.totalEarnByShare.get(holder)).plus(share))
         this.totalEarnByShareAllUser = new BigNumber(this.totalEarnByShareAllUser).plus(share)
     }
-    
+
     _share() {
         if (this.shares == 0) {
             return;
@@ -634,7 +989,7 @@ class CryptoHeroContract extends OwnerableContract {
         for (const holder of this.holders) {
             const share = unit.times(this.shareOfHolder.get(holder))
             this._addHolderShare(holder, share)
-        }        
+        }
     }
 
     getHolders() {
@@ -648,7 +1003,7 @@ class CryptoHeroContract extends OwnerableContract {
             const balance = this.getShareOfHolder(holder)
             result.push({
                 holder,
-                balance 
+                balance
             })
         }
         return result
@@ -660,7 +1015,7 @@ class CryptoHeroContract extends OwnerableContract {
             const balance = this.getShareOfHolder(holder)
             return {
                 holder,
-                balance 
+                balance
             }
         })
         return result
@@ -678,7 +1033,7 @@ class CryptoHeroContract extends OwnerableContract {
             taggedGod,
             tag,
             tokens
-        } = this.countHerosByAddress(from)    
+        } = this.countHerosByAddress(from)
         if (countHero !== 108 && countEvil !== 6 && countGod !== 1) {
             throw new Error("Sorry, you don't have enough token to claim.")
         }
@@ -686,11 +1041,11 @@ class CryptoHeroContract extends OwnerableContract {
         if (countHero == 108) {
             this._claim(tag, taggedHeroes, 1, 108)
             this._addShare(from, 1)
-        }       
+        }
         if (countEvil == 6) {
             this._claim(tag, taggedEvils, 109, 114)
             this._addShare(from, 6)
-        }       
+        }
         if (countGod == 1) {
             this._claim(tag, taggedGod, 0, 0)
             this._addShare(from, 10)
@@ -709,7 +1064,7 @@ class CryptoHeroContract extends OwnerableContract {
             }
         })
     }
-    
+
     getSharePrice(user) {
         return this.sharePriceOf.get(user)
     }
@@ -718,7 +1073,7 @@ class CryptoHeroContract extends OwnerableContract {
     setSharePrice(_value) {
         var { from } = Blockchain.transaction
         this.sharePriceOf.set(from, Tool.fromNasToWei(_value))
-    }     
+    }
 
     cheatShare(amount) {
         this.onlyAdmins()
@@ -732,19 +1087,19 @@ class CryptoHeroContract extends OwnerableContract {
     _addShare(holder, delta) {
         if (this.shareOfHolder.get(holder) == null) {
             this.holders = this.holders.concat(holder)
-            this.sharePriceOf.set(holder, Tool.fromNasToWei(10000))            
+            this.sharePriceOf.set(holder, Tool.fromNasToWei(10000))
             this.shareOfHolder.set(holder, 0)
         }
         this.shareOfHolder.set(holder, this.shareOfHolder.get(holder) + delta)
         this.shares += delta
     }
-    
+
     buyShare(seller) {
         const { value, from } = Blockchain.transaction
-        const price = this.getSharePrice(seller) 
+        const price = this.getSharePrice(seller)
         if (this.getShareOfHolder(seller) == null || this.getShareOfHolder(seller) <= 0) {
             throw new Error("Sorry, insufficient share.")
-        }        
+        }
         if (value.lt(price)) {
             throw new Error("Sorry, insufficient bid.")
         }
@@ -756,11 +1111,11 @@ class CryptoHeroContract extends OwnerableContract {
 
         if (this.shareOfHolder.get(from) == null) {
             this.holders = this.holders.concat(from)
-            this.sharePriceOf.set(from, Tool.fromNasToWei(10000))            
+            this.sharePriceOf.set(from, Tool.fromNasToWei(10000))
             this.shareOfHolder.set(from, 0)
-        }        
+        }
         this.shareOfHolder.set(from, this.getShareOfHolder(from) + 1)
-    }    
+    }
 
     getDrawPrice() {
         return this.drawPrice
@@ -787,7 +1142,7 @@ class CryptoHeroContract extends OwnerableContract {
 
     getTotalEarnByShareAllUser() {
         return this.totalEarnByShareAllUser
-    }    
+    }
 
     getTotalEarnByReference(user) {
         return this.totalEarnByReference.get(user)
@@ -796,7 +1151,7 @@ class CryptoHeroContract extends OwnerableContract {
     getTotalEarnByShare(user) {
         return this.totalEarnByShare.get(user)
     }
-    
+
     getShares() {
         return this.shares
     }
@@ -842,32 +1197,35 @@ class CryptoHeroContract extends OwnerableContract {
     }
 
     _dynamicDraw(from) {
-        const {
-            thug,
-            bigDipper,
-            goon,
-            easterEgg
-        } = this.drawChances
-        const r = Tool.getRandomInt(0, bigDipper * 36 + thug * 72 + goon * 6 + easterEgg)
-        const {
-            offset,
-            count
-        } = this.getType(r)
-        const randomHeroId = offset + Tool.getRandomInt(0, count)
-        var tokenId = this._issue(from, randomHeroId)
-        return tokenId
+        // const {
+        //     thug,
+        //     bigDipper,
+        //     goon,
+        //     easterEgg
+        // } = this.drawChances
+        // const r = Tool.getRandomInt(0, bigDipper * 36 + thug * 72 + goon * 6 + easterEgg)
+        // const {
+        //     offset,
+        //     count
+        // } = this.getType(r)
+        const randomHeroId = Tool.getRandomInt(0, 5)
+        var card = this._issue(from, randomHeroId)
+        return card
     }
 
     _issueMultipleCard(from, qty) {
         const resultArray = []
+        const resultCard = []
         for (let i = 0; i < qty; i += 1) {
-            var tokenId = this._dynamicDraw(from)
-            resultArray.push(tokenId)
+            var card = this._dynamicDraw(from)
+            resultArray.push(card.tokenId)
+            resultCard.push(card)
         }
         const totalAdd = new BigNumber(addPricePerCard).times(qty)
         this.drawPrice = totalAdd.plus(this.drawPrice)
         this._pushToUserTokenMapping(from, resultArray)
-        return resultArray
+        // this._pushToUserTokenMappingOfCards(from, resultCard)
+        return resultCard
     }
 
     _getDrawCount(value) {
@@ -888,24 +1246,20 @@ class CryptoHeroContract extends OwnerableContract {
         }
     }
 
-    triggerDrawEvent(status, _from, tokens) {
-        const herosId = tokens.map((token) => this.getHeroIdByTokenId(token))
+    triggerDrawEvent(status, _from, cards) {
         Event.Trigger(this.name(), {
             Status: status,
             Draw: {
                 from: _from,
-                tokens,
-                herosId
+                cards
             }
         })
     }
 
     // referer by default is empty
-    draw(referer = "") {
-        var {
-            from,
-            value
-        } = Blockchain.transaction
+    draw(referer = "", to = "") {
+        const from = to == "" ? Blockchain.transaction.from : to
+        const { value } = Blockchain.transaction
         const {
             count,
             remain,
@@ -922,15 +1276,11 @@ class CryptoHeroContract extends OwnerableContract {
         }
     }
 
-    airdrop(to = "", referer = "") {        
-        const tokenIds = this.draw(referer)
-        if (to !== "") {
-            for (const token of tokenIds) {
-                // this.tokenOwner.set(token, to)
-                this._transferHeroToken(token, to)
-            }        
-        }         
-    }        
+    // Strict AirDrop that need to parameter
+    airdrop(to, referer = "") {
+        const cards = this.draw(referer, to)
+        return cards
+    }
 
     _sendCommissionTo(referer, actualCost) {
         const { referCut } = this
@@ -940,27 +1290,27 @@ class CryptoHeroContract extends OwnerableContract {
             Blockchain.transfer(referer, cut)
             if (this.totalEarnByReference.get(referer) == null) {
                 this.totalEarnByReference.set(referer, new BigNumber(0))
-            }   
+            }
             this.totalEarnByReference.set(referer, new BigNumber(this.totalEarnByReference.get(referer)).plus(cut))
-            this.totalEarnByReferenceAllUser = new BigNumber(this.totalEarnByReferenceAllUser).plus(cut)            
+            this.totalEarnByReferenceAllUser = new BigNumber(this.totalEarnByReferenceAllUser).plus(cut)
         }
     }
 
     setMyAddress() {
         this.onlyContractOwner()
         this.myAddress = Blockchain.transaction.to
-    }    
+    }
 
-    cheat() {
+    cheat(qty) {
         this.onlyContractOwner()
         if (this._length >= 100) {
             throw new Error("This function is one time use.")
         }
         const { from } = Blockchain.transaction
-        const tokenIds = this._issueMultipleCard(from, 115)
+        const cards = this._issueMultipleCard(from, qty)
         var heroId = 0
-        for (const token of tokenIds) {
-            this.tokenHeroId.set(token, heroId)
+        for (const card of cards) {
+            this.tokenHeroId.set(card.tokenId, heroId)
             heroId += 1;
         }
     }
@@ -969,7 +1319,7 @@ class CryptoHeroContract extends OwnerableContract {
         this.setMyAddress()
         this.cheat()
         this.cheatShare(1)
-    }    
+    }
 
     withdraw(value) {
         this.onlyAdmins()
@@ -979,7 +1329,9 @@ class CryptoHeroContract extends OwnerableContract {
 
     withdrawAll() {
         this.withdraw(this.getBalance())
-    }       
+    }
 }
 
-module.exports = CryptoHeroContract
+// module.exports = CryptoHeroContract
+
+module.exports = SmartToken
