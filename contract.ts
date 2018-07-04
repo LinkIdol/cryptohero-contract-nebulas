@@ -8,7 +8,7 @@ import { BigNumber } from "./bignumber";
 import { LocalContractStorage, Blockchain, StorageMap, Descriptor, Event, ContractStorage } from "./System";
 class Allowed {
     allowed :object;
-    constructor(obj) {
+    constructor(obj?) {
         this.allowed = {};
         this.parse(obj);
     }
@@ -333,7 +333,7 @@ class SmartToken extends NRC20Token {
 
 class Operator {
     operator: object;
-    constructor(obj) {
+    constructor(obj?) {
         this.operator = {}
         this.parse(obj)
     }
@@ -387,6 +387,12 @@ const addPricePerCard = Tool.fromNasToWei(0.00001)
 // const addPricePerCard = Tool.fromNasToWei(0.0000000001)
 const initialTokenPrice = Tool.fromNasToWei(10000)
 class StandardNRC721Token {
+    _name: string;
+    _symbol: string;
+    tokenOwner: StorageMap;
+    ownedTokensCount: StorageMap;
+    tokenApprovals: StorageMap;
+    operatorApprovals: StorageMap;
     constructor() {
         // Contract Need to store on-chain data in LocalContractStorage
         LocalContractStorage.defineProperties(this, {
@@ -569,6 +575,7 @@ class StandardNRC721Token {
 }
 
 class TradableNRC721Token extends StandardNRC721Token {
+    tokenPrice : StorageMap
     constructor() {
         super()
         LocalContractStorage.defineMapProperties(this, { "tokenPrice": null })
@@ -640,6 +647,11 @@ class TradableNRC721Token extends StandardNRC721Token {
 }
 
 class CryptoHeroToken extends TradableNRC721Token {
+    _length: number;
+    totalQty: BigNumber;
+    tokenHeroId: StorageMap;
+    userToTokens: StorageMap;
+    cardInfos: StorageMap;
     constructor() {
         super()
         LocalContractStorage.defineProperties(this, {
@@ -795,6 +807,9 @@ class CryptoHeroToken extends TradableNRC721Token {
 }
 
 class OwnerableContract extends CryptoHeroToken {
+    owner :string;
+    admins :StorageMap;
+
     constructor() {
         super()
         LocalContractStorage.defineProperties(this, { owner: null })
@@ -839,22 +854,30 @@ class OwnerableContract extends CryptoHeroToken {
 class CryptoHeroContract extends OwnerableContract {
     drawChances :object;
     drawPrice: BigNumber;
-    referCut: null;
+    referCut: BigNumber;
     myAddress: string;
-    shares: null;
-    totalEarnByShareAllUser: null;
-    totalEarnByReferenceAllUser: null;
-    holders: null;
+    shares: number;
+    totalEarnByShareAllUser: BigNumber;
+    totalEarnByReferenceAllUser: BigNumber;
+    holders: Array<string>;
+
+    // Type anotations for map
+    "tokenClaimed": StorageMap;
+    "shareOfHolder": StorageMap;
+    "totalEarnByShare": StorageMap;
+    "totalEarnByReference": StorageMap;
+    "sharePriceOf": StorageMap;
+
     constructor() {
         super()
         LocalContractStorage.defineProperties(this, {
             drawChances: null,
-            drawPrice: null,
-            referCut: null,
+            drawPrice: BigNumberDescriptor,
+            referCut: BigNumberDescriptor,
             myAddress: null,
             shares: null,
-            totalEarnByShareAllUser: null,
-            totalEarnByReferenceAllUser: null,
+            totalEarnByShareAllUser: BigNumberDescriptor,
+            totalEarnByReferenceAllUser: BigNumberDescriptor,
             holders: null
         })
         LocalContractStorage.defineMapProperties(this, {
