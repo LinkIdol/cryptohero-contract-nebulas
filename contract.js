@@ -252,36 +252,73 @@ class SmartToken extends NRC20Token {
         this.balances.set(_from, balance.sub(amount))
     }
 
+    _getprice(_startamount, _endamount) {
+        // y = ax; a = rate;
+        // x1 = startamout; x2 = endamount;
+        //
+        // y ^    
+        //   |    
+        //   |     /|
+        //   |    / | 
+        //   |   /  |
+        //   |  |   |
+        //  -+----------->
+        //   |  x1  x2   x
+        //    
+        //  // need to add 1 high, for true price
+        //
+        //    1            0           1
+        //   □           |\           - 
+        // 3 □□    =   3 | \    ≠  2 | \
+        //   □□□         |  \        |  \
+        //    3            3           3
+        //
+        var startamount = new BigNumber(_startamount)
+        var endamount = new BigNumber(_endamount)
+        var rate = new BigNumber(this.rate)
+        var price = (endamount.add(startamount)).times((endamount.sub(startamount).add(1)).times(rate)).div(2)
+        return price
+    }
+
     // https://github.com/bancorprotocol/contracts/blob/ff48eff4154331b802e1fb504e8b583a45265035/solidity/contracts/converter/BancorConverter.sol
 
-    buy (_amount) {
+    buy(_amount) {
         var from = Blockchain.transaction.from
         var value = Blockchain.transaction.value
         var amount = new BigNumber(_amount)
-        var price = new BigNumber(amount.times(this.oneprice))
+        var newoneprice = new BigNumber(this.oneprice).add(new BigNumber(this.rate).times(_amount))
+        var startamount = new BigNumber(this.oneprice).div(this.rate)
+        var endamount = newoneprice.div(this.rate)
+        var price = new BigNumber(this._getprice(startamount, endamount))
         if (value.lt(price)) {
             throw new Error("Sorry, no enough value.")
         }
         Blockchain.transfer(from, value.sub(price))
-        this._issue(from, amount);
-        this.oneprice = new BigNumber(this.oneprice).add(new BigNumber(this.rate).times(_amount))
+        this._issue(from, amount)
+        this.oneprice = newoneprice
     }
 
     sell(_amount) {
         var from = Blockchain.transaction.from
         var amount = new BigNumber(_amount)
         var balance = this.balances.get(from) || new BigNumber(0)
+        var newoneprice = new BigNumber(this.oneprice).sub(new BigNumber(this.rate).times(_amount))
+        var startamount = (new BigNumber(this.oneprice).div(this.rate))
+        var endamount = newoneprice.div(this.rate)
+        // get abs
+        var price = new BigNumber(this._getprice(endamout, startamout))
         if (balance.lt(amount)) {
             throw new Error("Sorry, no enough balance.")
         }
-        this.oneprice = new BigNumber(this.oneprice).sub(new BigNumber(this.rate).times(_amount))
-        this._destroy(from, amount);
-        Blockchain.transfer(from, amount.times(this.oneprice))                        
+        Blockchain.transfer(from, price) 
+        this._destroy(from, amount)
+        this.oneprice = newoneprice                    
     }
 
     getoneprice () {
         return this.oneprice
     }
+
 }
 
 class Operator {
@@ -1293,6 +1330,6 @@ class CryptoHeroContract extends OwnerableContract {
     }
 }
 
-module.exports = CryptoHeroContract
+// module.exports = CryptoHeroContract
 
-// module.exports = SmartToken
+module.exports = SmartToken
