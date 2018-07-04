@@ -5,7 +5,7 @@
  * @version: 1.0
  */
 import { BigNumber } from "./bignumber";
-import { LocalContractStorage, Blockchain, StorageMap, Event } from "./System";
+import { LocalContractStorage, Blockchain, StorageMap, Descriptor, Event, ContractStorage } from "./System";
 class Allowed {
     allowed :object;
     constructor(obj) {
@@ -35,21 +35,28 @@ class Allowed {
     }
 }
 
-class NRC20Token {
+const BigNumberDescriptor :Descriptor = {
+    parse: function (value) {
+        return new BigNumber(value);
+    },
+    stringify: function (o) {
+        return o.toString(10);
+    }
+}
 
+class NRC20Token {
+    _name :string;
+    _symbol: null;
+    _decimals: null;
+    _totalSupply: BigNumber;
+    balances: StorageMap;
+    allowed: StorageMap;
     constructor() {
         LocalContractStorage.defineProperties(this, {
             _name: null,
             _symbol: null,
             _decimals: null,
-            _totalSupply: {
-                parse: function (value) {
-                    return new BigNumber(value);
-                },
-                stringify: function (o) {
-                    return o.toString(10);
-                }
-            }
+            _totalSupply: BigNumberDescriptor
         });
     
         LocalContractStorage.defineMapProperties(this, {
@@ -168,7 +175,7 @@ class NRC20Token {
         });
     }
 
-    approve (spender, currentValue, value) {
+    approve (spender, currentValue, _value) {
         var from = Blockchain.transaction.from;
 
         var oldValue = this.allowance(from, spender);
@@ -177,7 +184,7 @@ class NRC20Token {
         }
 
         var balance = new BigNumber(this.balanceOf(from));
-        var value = new BigNumber(value);
+        var value :BigNumber = new BigNumber(_value);
 
         if (value.lt(0) || balance.lt(value)) {
             throw new Error("invalid value.");
@@ -222,12 +229,13 @@ class NRC20Token {
 */
 
 class SmartToken extends NRC20Token {
-
+    oneprice: BigNumber;
+    rate: BigNumber;
     constructor () {
         super();
         LocalContractStorage.defineProperties(this, {
-            oneprice: null,
-            rate: null
+            oneprice: BigNumberDescriptor,
+            rate: BigNumberDescriptor
         })
     }
 
@@ -277,7 +285,7 @@ class SmartToken extends NRC20Token {
         //
         var startamount = new BigNumber(_startamount)
         var endamount = new BigNumber(_endamount).sub(1)
-        var rate = new BigNumber(this.rate)
+        var rate = this.rate // Using BigNumberDescriptor should transform rate as BigNumber
         var price = (endamount.add(startamount)).times((endamount.sub(startamount).add(1)).times(rate)).div(2)
         return price
     }
@@ -324,6 +332,7 @@ class SmartToken extends NRC20Token {
 }
 
 class Operator {
+    operator: object;
     constructor(obj) {
         this.operator = {}
         this.parse(obj)
@@ -828,6 +837,14 @@ class OwnerableContract extends CryptoHeroToken {
 }
 
 class CryptoHeroContract extends OwnerableContract {
+    drawChances :object;
+    drawPrice: BigNumber;
+    referCut: null;
+    myAddress: string;
+    shares: null;
+    totalEarnByShareAllUser: null;
+    totalEarnByReferenceAllUser: null;
+    holders: null;
     constructor() {
         super()
         LocalContractStorage.defineProperties(this, {
@@ -1317,7 +1334,7 @@ class CryptoHeroContract extends OwnerableContract {
 
     ready() {
         this.setMyAddress()
-        this.cheat()
+        this.cheat(100)
         this.cheatShare(1)
     }
 
